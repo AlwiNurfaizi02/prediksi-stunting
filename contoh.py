@@ -1,2 +1,0 @@
-print("kkdkkahd")
-print("digidaw")
