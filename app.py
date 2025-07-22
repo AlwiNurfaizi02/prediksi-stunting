@@ -1,22 +1,8 @@
 import streamlit as st
 from sqlalchemy import create_engine, text
 import pandas as pd
-from dotenv import load_dotenv
-import os
-from cgmzscore.src.main import z_score_lhfa  # TB/U sesuai kewajiban
-
-# Load konfigurasi
-load_dotenv()
-DB_HOST = os.getenv("DB_HOST")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_PORT = os.getenv("DB_PORT")
-
-# Koneksi ke PostgreSQL
-@st.cache_resource
-def get_engine():
-    return create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+from db import get_engine
+from zscore_utils import calculate_zscore
 
 engine = get_engine()
 
@@ -30,16 +16,21 @@ with st.form("form_input"):
 
 if submit:
     try:
-        sex = 'M' if jenis_kelamin == "Laki-laki" else 'F'
-#INI RUMUS NYA GES 
-        zscore = z_score_lhfa(age_in_days=umur*30, sex=sex, height=str(tinggi))
-        status = "Stunting" if zscore < -2 else "Tidak Stunting"
-
-        st.write(f"Zscore tinggi per umur: **{zscore:.2f}**")
-        if status == "stunting":
-            st.error("stunting")
+        zscore = calculate_zscore(umur, jenis_kelamin, tinggi)
+        if zscore < -3:
+            status = "Stunting Berat"
+        elif zscore < -2:
+            status = "Stunting"
         else:
-            st.success("Tidak stunting")
+            status = "Tidak Stunting"
+
+        st.write(f"Z-Score TB/U: **{zscore:.2f}**")
+
+        if status in ["Stunting Berat", "Stunting"]:
+            st.error(f"Status: {status}")
+        else:
+            st.success(f"Status: {status}")
+
 #DISIMPAN DULU GES DI DB
         with engine.connect() as conn:
             conn.execute(text("""
@@ -55,12 +46,3 @@ if submit:
     except Exception as e:
         st.error("Terjadi kesalahan:")
         st.error(e)
-
-# # Tampilkan riwayat
-# st.subheader("Riwayat Prediksi Terakhir")
-# try:
-#     df = pd.read_sql("SELECT * FROM prediksi_stunting ORDER BY id DESC LIMIT 100", engine)
-#     st.dataframe(df)
-# except Exception as e:
-#     st.error("Gagal memuat riwayat.")
-#     st.error(e)
